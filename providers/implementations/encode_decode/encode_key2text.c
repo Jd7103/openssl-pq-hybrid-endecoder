@@ -33,6 +33,8 @@
 #include "prov/endecoder_local.h"
 #include "prov/ml_dsa_codecs.h"
 #include "prov/ml_kem_codecs.h"
+#include "prov/mlx_kem.h"
+#include "prov/mlx_kem_codecs.h"
 #include "prov/lms_codecs.h"
 
 DEFINE_SPECIAL_STACK_OF_CONST(BIGNUM_const, BIGNUM)
@@ -755,4 +757,21 @@ MAKE_TEXT_ENCODER(slh_dsa_shake_256f, slh_dsa);
 
 #ifndef OPENSSL_NO_LMS
 MAKE_TEXT_ENCODER(lms, lms);
+#endif
+
+#ifndef OPENSSL_NO_ML_KEM
+#if !defined(FIPS_MODULE)
+static int mlx_kem_to_text(BIO *out, const void *vkey, int selection)
+{
+    return ossl_mlx_kem_key_to_text(out, (const MLX_KEY *)vkey, selection);
+}
+#endif
+#endif
+
+#ifndef OPENSSL_NO_ML_KEM
+    #if !defined(FIPS_MODULE)
+    #if !defined(OPENSSL_NO_ECX)
+MAKE_TEXT_ENCODER(mlx_x25519_hpke_kem, mlx_kem);
+    #endif
+    #endif
 #endif

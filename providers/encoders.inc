@@ -430,3 +430,14 @@ ENCODER_w_structure("EC", ec, yes, pem, X9_62),
 ENCODER_w_structure("LMS", lms, yes, der, SubjectPublicKeyInfo),
 ENCODER_w_structure("LMS", lms, yes, pem, SubjectPublicKeyInfo),
 #endif /* OPENSSL_NO_LMS */
+
+#ifndef OPENSSL_NO_ML_KEM
+  #ifndef OPENSSL_NO_ECX
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, der, EncryptedPrivateKeyInfo),
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, pem, EncryptedPrivateKeyInfo),
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, der, PrivateKeyInfo),
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, pem, PrivateKeyInfo),
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, der, SubjectPublicKeyInfo),
+    ENCODER_w_structure("HPKE-XWING", mlx_x25519_hpke_kem, no, pem, SubjectPublicKeyInfo),
+  #endif
+#endif /* OPENSSL_NO_ML_KEM */

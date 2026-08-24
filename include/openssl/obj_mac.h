@@ -6650,6 +6650,11 @@
 #define LN_ML_KEM_1024          "ML-KEM-1024"
 #define NID_ML_KEM_1024         1456
 #define OBJ_ML_KEM_1024         OBJ_nistKems,3L
+
+#define SN_HPKE_XWING           "id_alg_hpke_xwing"
+#define LN_HPKE_XWING           "HPKE-XWING"
+#define NID_HPKE_XWING          1502
+#define OBJ_HPKE_XWING          1L,3L,6L,1L,4L,1L,62253L,25722L
 /* clang-format on */
 
 #endif /* OPENSSL_OBJ_MAC_H */

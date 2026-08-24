@@ -15,6 +15,10 @@
 #include <openssl/ml_kem.h>
 #include <crypto/ml_kem.h>
 #include <crypto/ecx.h>
+#include <stdbool.h>
+#include "prov/provider_ctx.h"
+
+#define EVP_PKEY_XWING NID_HPKE_XWING
 
 typedef struct ecdh_vinfo_st {
     const char *algorithm_name;
@@ -26,6 +30,8 @@ typedef struct ecdh_vinfo_st {
     int ml_kem_variant;
     size_t ec_nSeed; /* Used for HPKE keygen entropy length, zero for TLS use cases */
     const char *label;
+    int evp_type;
+    int kemid;
 } ECDH_VINFO;
 
 typedef struct mlx_key_st {
@@ -37,7 +43,11 @@ typedef struct mlx_key_st {
     EVP_PKEY *xkey;
     unsigned int state;
     int kemid;
+    unsigned char *dk_seed;
+    size_t dk_seed_len; 
 } MLX_KEY;
+
+#define ossl_mlx_kem_have_dkenc(key) ((key)->encoded_dk != NULL)
 
 #define MLX_HAVE_NOKEYS 0
 #define MLX_HAVE_PUBKEY 1
@@ -46,5 +56,19 @@ typedef struct mlx_key_st {
 /* Both key parts have whatever the ML-KEM component has */
 #define mlx_kem_have_pubkey(key) ((key)->state > 0)
 #define mlx_kem_have_prvkey(key) ((key)->state > 1)
+#define mlx_kem_have_seed(key) ((key)->dk_seed != NULL)
+
+const ECDH_VINFO *ossl_mlx_kem_get_vinfo(int evp_type);
+
+MLX_KEY *ossl_prov_mlx_kem_new(PROV_CTX *provctx, const char *propq, int evp_type);
+MLX_KEY *ossl_mlx_kem_set_seed(const uint8_t *seed, size_t seedlen, MLX_KEY *key);
+
+int ossl_mlx_kem_encode_public_key(uint8_t *out, size_t len, const MLX_KEY *key);
+int ossl_mlx_kem_encode_private_key(uint8_t *out, size_t len, const MLX_KEY *key);
+int ossl_mlx_kem_encode_seed(uint8_t *out, size_t len, const MLX_KEY *key);
+int ossl_mlx_kem_key_fromdata(MLX_KEY *key, const OSSL_PARAM params[], int include_private);
+int ossl_mlx_kem_key_gen(MLX_KEY *key, const uint8_t *ikm_or_seed, size_t ikm_or_seedlen, bool is_ikm);
+
+void ossl_mlx_kem_key_free(void *vkey);
 
 #endif

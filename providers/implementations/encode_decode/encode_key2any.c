@@ -41,6 +41,7 @@
 #include "prov/endecoder_local.h"
 #include "prov/ml_dsa_codecs.h"
 #include "prov/ml_kem_codecs.h"
+#include "prov/mlx_kem_codecs.h"
 #include "prov/lms_codecs.h"
 #include "providers/implementations/encode_decode/encode_key2any.inc"
 
@@ -911,6 +912,36 @@ static int ml_kem_pki_priv_to_der(const void *vkey, unsigned char **pder,
 #endif
 
 /* ---------------------------------------------------------------------- */
+
+#ifndef OPENSSL_NO_ML_KEM
+#if !defined(FIPS_MODULE)
+
+static int mlx_kem_spki_pub_to_der(const void *vkey, unsigned char **pder,
+    ossl_unused void *ctx)
+{
+    return ossl_mlx_kem_i2d_pubkey(vkey, pder);
+}
+
+static int mlx_kem_pki_priv_to_der(const void *vkey, unsigned char **pder,
+    void *vctx)
+{
+    KEY2ANY_CTX *ctx = vctx;
+
+    return ossl_mlx_kem_i2d_prvkey(vkey, pder,
+        ctx->provctx, ctx->output_formats);
+}
+
+#define mlx_kem_epki_priv_to_der mlx_kem_pki_priv_to_der
+#define prepare_mlx_kem_params NULL
+#define mlx_kem_check_key_type NULL
+
+#ifndef OPENSSL_NO_ECX
+#define mlx_x25519_hpke_kem_evp_type NID_HPKE_XWING
+#define mlx_x25519_hpke_kem_pem_type "HPKE-XWING"
+#endif
+
+#endif /* FIPS_MODULE */
+#endif /* OPENSSL_NO_ML_KEM */
 
 /*
  * Helper functions to prepare RSA-PSS params for encoding.  We would
@@ -1786,4 +1817,17 @@ MAKE_ENCODER(ml_dsa_87, ml_dsa, SubjectPublicKeyInfo, pem);
 #ifndef OPENSSL_NO_LMS
 MAKE_ENCODER(lms, lms, SubjectPublicKeyInfo, der);
 MAKE_ENCODER(lms, lms, SubjectPublicKeyInfo, pem);
+#endif
+
+#ifndef OPENSSL_NO_ML_KEM
+#if !defined(FIPS_MODULE)
+#ifndef OPENSSL_NO_ECX
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, EncryptedPrivateKeyInfo, der);
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, EncryptedPrivateKeyInfo, pem);
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, PrivateKeyInfo, der);
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, PrivateKeyInfo, pem);
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, SubjectPublicKeyInfo, der);
+MAKE_ENCODER(mlx_x25519_hpke_kem, mlx_kem, SubjectPublicKeyInfo, pem);
+#endif
+#endif
 #endif

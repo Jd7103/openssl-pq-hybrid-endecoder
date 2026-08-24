@@ -64,13 +64,23 @@ static const ECDH_VINFO hybrid_vtable[] = {
 #if !defined(FIPS_MODULE)
     { "EC", "P-256", 65, 32, 32, 0, EVP_PKEY_ML_KEM_768, 128, "MLKEM768-P256" },
     { "EC", "P-384", 97, 48, 48, 0, EVP_PKEY_ML_KEM_1024, 48, "MLKEM1024-P384" },
-    { "X25519", NULL, 32, 32, 32, 0, EVP_PKEY_ML_KEM_768, 32, "\x5c\x2e\x2f\x2f\x5e\x5c" },
+    { "X25519", NULL, 32, 32, 32, 0, EVP_PKEY_ML_KEM_768, 32, "\x5c\x2e\x2f\x2f\x5e\x5c", EVP_PKEY_XWING, OSSL_HPKE_KEM_ID_XWING },
 #else
     { NULL, NULL, 0, 0, 0, 0, NID_undef },
     { NULL, NULL, 0, 0, 0, 0, NID_undef },
     { NULL, NULL, 0, 0, 0, 0, NID_undef },
 #endif
 };
+
+const ECDH_VINFO *ossl_mlx_kem_get_vinfo(int evp_type)
+{
+    size_t i;
+
+    for (i = 0; i < OSSL_NELEM(hybrid_vtable); i++)
+        if (hybrid_vtable[i].evp_type == evp_type)
+            return &hybrid_vtable[i];
+    return NULL;
+}
 
 typedef struct mlx_kem_gen_ctx_st {
     OSSL_LIB_CTX *libctx;
@@ -93,7 +103,12 @@ static void mlx_kem_key_free(void *vkey)
     OPENSSL_free(key->propq);
     EVP_PKEY_free(key->mkey);
     EVP_PKEY_free(key->xkey);
+    OPENSSL_secure_clear_free(key->dk_seed, key->dk_seed_len);
     OPENSSL_free(key);
+}
+
+void ossl_mlx_kem_key_free(void *vkey) {
+    mlx_kem_key_free(vkey);
 }
 
 /* Takes ownership of propq */
@@ -116,11 +131,27 @@ mlx_kem_key_new(unsigned int v, OSSL_LIB_CTX *libctx, char *propq, int kemid)
     key->state = MLX_HAVE_NOKEYS;
     key->propq = propq;
     key->kemid = kemid;
+    key->dk_seed = NULL;
+    key->dk_seed_len = 0;
     return key;
 
 err:
     OPENSSL_free(propq);
     return NULL;
+}
+
+MLX_KEY *ossl_prov_mlx_kem_new(PROV_CTX *provctx, const char *propq, int evp_type)
+{
+    OSSL_LIB_CTX *libctx = provctx == NULL ? NULL : PROV_LIBCTX_OF(provctx);
+    const ECDH_VINFO *v = ossl_mlx_kem_get_vinfo(evp_type);
+    char *propq_copy = NULL;
+
+    if (v == NULL)
+        return NULL;
+    if (propq != NULL && (propq_copy = OPENSSL_strdup(propq)) == NULL)
+        return NULL;
+
+    return mlx_kem_key_new((unsigned int)(v - hybrid_vtable), libctx, propq_copy, v->kemid);
 }
 
 static int mlx_kem_key_gen(MLX_KEY *key,
@@ -179,6 +210,14 @@ static int mlx_kem_key_gen(MLX_KEY *key,
                 memcpy(seed_buf, ikm_or_seed, ikm_or_seedlen);
             }
         }
+        /* Only save seed for XWING for the moment. */
+        if (key->kemid == OSSL_HPKE_KEM_ID_XWING) {
+            key->dk_seed = OPENSSL_secure_malloc(seed_len);
+            if (key->dk_seed == NULL)
+                goto err;
+            memcpy(key->dk_seed, seed_buf, seed_len);
+            key->dk_seed_len = seed_len;
+        }
         mdctx = EVP_MD_CTX_new();
         if (mdctx == NULL
             || !EVP_DigestInit_ex2(mdctx, shakemd, NULL)
@@ -233,6 +272,21 @@ err:
     EVP_MD_free(shakemd);
     EVP_MD_CTX_free(mdctx);
     return ret;
+}
+
+int ossl_mlx_kem_key_gen(MLX_KEY *key, const uint8_t *ikm_or_seed, size_t ikm_or_seedlen, bool is_ikm) {
+    return mlx_kem_key_gen(key, ikm_or_seed, ikm_or_seedlen, is_ikm);
+}
+
+MLX_KEY *ossl_mlx_kem_set_seed(const uint8_t *seed, size_t seedlen, MLX_KEY *key)
+{
+    if (key == NULL || key->dk_seed != NULL)
+        return NULL;
+    if ((key->dk_seed = OPENSSL_secure_malloc(seedlen)) == NULL)
+        return NULL;
+    memcpy(key->dk_seed, seed, seedlen);
+    key->dk_seed_len = seedlen;
+    return key;
 }
 
 static int mlx_kem_has(const void *vkey, int selection)
@@ -588,6 +642,12 @@ static int mlx_kem_key_fromdata(MLX_KEY *key,
     return load_keys(key, pubenc, publen, prvenc, prvlen);
 }
 
+int ossl_mlx_kem_key_fromdata(MLX_KEY *key,
+    const OSSL_PARAM params[],
+    int include_private) {
+        return mlx_kem_key_fromdata(key, params, include_private);
+    }
+
 static int mlx_kem_import(void *vkey, int selection, const OSSL_PARAM params[])
 {
     MLX_KEY *key = vkey;
@@ -893,13 +953,25 @@ static void *mlx_kem_dup(const void *vkey, int selection)
         return NULL;
     }
 
+    ret->dk_seed = NULL;
+    ret->dk_seed_len = 0;
+    if (key->dk_seed != NULL) {
+        ret->dk_seed = OPENSSL_secure_malloc(key->dk_seed_len);
+        if (ret->dk_seed == NULL) {
+            OPENSSL_free(ret->propq);
+            OPENSSL_free(ret); 
+            return NULL;
+        }
+        memcpy(ret->dk_seed, key->dk_seed, key->dk_seed_len);  
+        ret->dk_seed_len = key->dk_seed_len;
+    } 
+
     /* Absent key material, nothing left to do */
     if (key->mkey == NULL) {
         if (key->xkey == NULL)
             return ret;
         /* Fail if the source key is an inconsistent state */
-        OPENSSL_free(ret->propq);
-        OPENSSL_free(ret);
+        mlx_kem_key_free(ret);
         return NULL;
     }
 
@@ -920,6 +992,65 @@ static void *mlx_kem_dup(const void *vkey, int selection)
     }
 
     mlx_kem_key_free(ret);
+    return NULL;
+}
+
+static int
+mlx_kem_encode_component(uint8_t *out, size_t len, const MLX_KEY *key, int want_private)
+{
+    int ml_kem_slot = key->xinfo->ml_kem_slot;
+    size_t mbytes = want_private ? key->minfo->prvkey_bytes : key->minfo->pubkey_bytes;
+    size_t xbytes = want_private ? key->xinfo->prvkey_bytes : key->xinfo->pubkey_bytes;
+    size_t moff = ml_kem_slot * xbytes;
+    size_t xoff = (1 - ml_kem_slot) * mbytes;
+    const char *pname = want_private ? OSSL_PKEY_PARAM_PRIV_KEY : OSSL_PKEY_PARAM_PUB_KEY;
+    size_t rlen;
+
+    if (len != mbytes + xbytes)
+        return 0;
+    if (want_private ? !mlx_kem_have_prvkey(key) : !mlx_kem_have_pubkey(key))
+        return 0;
+
+    return EVP_PKEY_get_octet_string_param(key->mkey, pname, out + moff,
+                                            mbytes, &rlen) == 1
+        && rlen == mbytes
+        && EVP_PKEY_get_octet_string_param(key->xkey, pname, out + xoff,
+                                            xbytes, &rlen) == 1
+        && rlen == xbytes;
+}
+
+int ossl_mlx_kem_encode_public_key(uint8_t *out, size_t len, const MLX_KEY *key)
+{
+    return mlx_kem_encode_component(out, len, key, 0);
+}
+
+int ossl_mlx_kem_encode_private_key(uint8_t *out, size_t len, const MLX_KEY *key)
+{
+    return mlx_kem_encode_component(out, len, key, 1);
+}
+
+int ossl_mlx_kem_encode_seed(uint8_t *out, size_t len, const MLX_KEY *key)
+{
+    if (key->dk_seed == NULL || len != key->dk_seed_len)
+        return 0;
+    memcpy(out, key->dk_seed, len);
+    return 1;
+}
+
+static OSSL_FUNC_keymgmt_load_fn mlx_kem_load;
+
+static void *mlx_kem_load(const void *reference, size_t reference_sz)
+{
+    MLX_KEY *key = NULL;
+
+    if (ossl_prov_is_running() && reference_sz == sizeof(key)) {
+        /* The contents of the reference is the address to our object */
+        key = *(MLX_KEY **)reference;
+        /* We grabbed, so we detach it */
+        *(MLX_KEY **)reference = NULL;
+        return key;
+    }
+
     return NULL;
 }
 
@@ -960,6 +1091,7 @@ static void *mlx_kem_dup(const void *vkey, int selection)
         { OSSL_FUNC_KEYMGMT_IMPORT_TYPES, (OSSL_FUNC)mlx_kem_imexport_types },             \
         { OSSL_FUNC_KEYMGMT_EXPORT, (OSSL_FUNC)mlx_kem_export },                           \
         { OSSL_FUNC_KEYMGMT_EXPORT_TYPES, (OSSL_FUNC)mlx_kem_imexport_types },             \
+        { OSSL_FUNC_KEYMGMT_LOAD, (OSSL_FUNC)mlx_kem_load },                               \
         OSSL_DISPATCH_END                                                                  \
     }
 /* See |hybrid_vtable| above */

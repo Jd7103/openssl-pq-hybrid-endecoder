@@ -151,3 +151,12 @@ DECODER("DER", pem, der, yes, "PEMtoDER"),
  * unencrypted PrivateKeyInfo in DER form to the identified algorithm.
  */
 DECODER_w_structure("DER", der, EncryptedPrivateKeyInfo, der, yes, "EPKItoDER"),
+
+#ifndef OPENSSL_NO_ML_KEM
+  #if !defined(FIPS_MODULE)
+    #ifndef OPENSSL_NO_ECX
+      DECODER_w_structure("HPKE-XWING", der, PrivateKeyInfo, mlx_x25519_hpke_kem, yes, "PKItoHPKE-XWING-DER"),
+      DECODER_w_structure("HPKE-XWING", der, SubjectPublicKeyInfo, mlx_x25519_hpke_kem, yes, "SPKItoHPKE-XWING-DER"),
+    #endif
+  #endif
+#endif

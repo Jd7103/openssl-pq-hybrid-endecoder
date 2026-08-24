@@ -366,6 +366,33 @@ extern const OSSL_DISPATCH ossl_mlx_p256_kem_kmgmt_functions[];
 extern const OSSL_DISPATCH ossl_mlx_p384_kem_kmgmt_functions[];
 extern const OSSL_DISPATCH ossl_mlx_p256_hpke_kem_kmgmt_functions[];
 extern const OSSL_DISPATCH ossl_mlx_p384_hpke_kem_kmgmt_functions[];
+
+/* En/Decoder code expects keymgmt instead of kmgmt defined in mlx_kmgmt */
+#define ossl_mlx_p256_hpke_kem_keymgmt_functions \
+    ossl_mlx_p256_hpke_kem_kmgmt_functions
+#define ossl_mlx_p384_hpke_kem_keymgmt_functions \
+    ossl_mlx_p384_hpke_kem_kmgmt_functions
+#ifndef OPENSSL_NO_ECX
+#define ossl_mlx_x25519_hpke_kem_keymgmt_functions \
+    ossl_mlx_x25519_hpke_kem_kmgmt_functions
+#endif
+
+#ifndef OPENSSL_NO_ML_KEM
+#if !defined(FIPS_MODULE)
+#ifndef OPENSSL_NO_ECX
+extern const OSSL_DISPATCH ossl_PrivateKeyInfo_der_to_mlx_x25519_hpke_kem_decoder_functions[];
+extern const OSSL_DISPATCH ossl_SubjectPublicKeyInfo_der_to_mlx_x25519_hpke_kem_decoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_EncryptedPrivateKeyInfo_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_EncryptedPrivateKeyInfo_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_PrivateKeyInfo_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_PrivateKeyInfo_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_SubjectPublicKeyInfo_der_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_SubjectPublicKeyInfo_pem_encoder_functions[];
+extern const OSSL_DISPATCH ossl_mlx_x25519_hpke_kem_to_text_encoder_functions[];
+#endif /* OPENSSL_NO_ECX */
+#endif /* FIPS_MODULE */
+#endif /* OPENSSL_NO_ML_KEM */
+
 #ifndef OPENSSL_NO_SM2
 extern const OSSL_DISPATCH ossl_mlx_curve_sm2_kem_kmgmt_functions[];
 #endif /* OPENSSL_NO_SM2 */

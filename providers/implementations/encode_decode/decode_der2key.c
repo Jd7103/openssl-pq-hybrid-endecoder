@@ -44,6 +44,8 @@
 #include "internal/nelem.h"
 #include "prov/ml_dsa_codecs.h"
 #include "prov/ml_kem_codecs.h"
+#include "prov/mlx_kem_codecs.h"
+#include "openssl/hpke.h"
 #include "prov/lms_codecs.h"
 #include "providers/implementations/encode_decode/decode_der2key.inc"
 
@@ -1019,7 +1021,48 @@ static ossl_inline void *lms_d2i_PUBKEY(const uint8_t **der, long der_len,
     return key;
 }
 #endif
+
 /* ---------------------------------------------------------------------- */
+
+#ifndef OPENSSL_NO_ML_KEM
+#if !defined(FIPS_MODULE)
+#ifndef OPENSSL_NO_ECX
+
+static ossl_inline void *mlx_x25519_hpke_kem_d2i_PUBKEY(const unsigned char **der,
+    long der_len, struct der2key_ctx_st *ctx)
+{
+    MLX_KEY *key;
+
+    key = ossl_mlx_kem_d2i_PUBKEY(*der, (int)der_len,
+        ctx->desc->evp_type, ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+static void *mlx_x25519_hpke_kem_d2i_PKCS8(const unsigned char **der,
+    long der_len, struct der2key_ctx_st *ctx)
+{
+    MLX_KEY *key;
+
+    key = ossl_mlx_kem_d2i_PKCS8(*der, (int)der_len,
+        ctx->desc->evp_type, ctx->provctx, ctx->propq);
+    if (key != NULL)
+        *der += der_len;
+    return key;
+}
+
+#define mlx_x25519_hpke_kem_evp_type NID_HPKE_XWING
+#define mlx_x25519_hpke_kem_d2i_private_key NULL
+#define mlx_x25519_hpke_kem_d2i_public_key  NULL
+#define mlx_x25519_hpke_kem_d2i_key_params  NULL
+#define mlx_x25519_hpke_kem_free            (free_key_fn *)ossl_mlx_kem_key_free
+#define mlx_x25519_hpke_kem_check           NULL
+#define mlx_x25519_hpke_kem_adjust          NULL
+
+#endif /* OPENSSL_NO_ECX */
+#endif  /* FIPS_MODULE */
+#endif   /* OPENSSL_NO_ML_KEM */
 
 /*
  * The DO_ macros help define the selection mask and the method functions
@@ -1326,4 +1369,13 @@ MAKE_DECODER("ML-DSA-87", ml_dsa_87, ml_dsa_87, SubjectPublicKeyInfo);
 
 #ifndef OPENSSL_NO_LMS
 MAKE_DECODER("LMS", lms, lms, SubjectPublicKeyInfo);
+#endif
+
+#ifndef OPENSSL_NO_ML_KEM
+    #if !defined(FIPS_MODULE)
+    #ifndef OPENSSL_NO_ECX
+MAKE_DECODER("HPKE-XWING", mlx_x25519_hpke_kem, mlx_kem, PrivateKeyInfo);
+MAKE_DECODER("HPKE-XWING", mlx_x25519_hpke_kem, mlx_kem, SubjectPublicKeyInfo);
+    #endif
+    #endif
 #endif
